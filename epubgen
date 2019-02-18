@@ -1,0 +1,168 @@
+#!/bin/bash
+# msg stderr
+errecho() {
+	echo "$@" >&2
+}
+
+# usage - unused yet since we don't have any command line args
+usage() {
+	errecho "$0 - generate epub files"
+}
+
+if [ -f "config.sh" ]
+then
+	source "config.sh"
+else
+	cat > "config.sh" << 'EOF'
+#!/bin/bash
+# This is epubgen's configuration file. It is a bash script and will be sourced
+# when epubgen runs.
+
+# Final filename
+EPUBTARGET="mynovel.epub"
+
+# Metadata for content.opf
+EPUBTITLE="My Super Novel"
+EPUBAUTHOR="Jane Doe"
+EPUBFILEAS="Doe, Jane"
+# Use a url instead of an isbn?
+EPUBUSEURL=true
+EPUBISBN="123456789X"
+EPUBURL="http://site.for.my.book/book.htm"
+# Lang must conform to https://www.ietf.org/rfc/rfc3066.txt
+# I.E. [ISO 639-2 or -1 code](-[variant]) - e.g eo, eng-gb
+EPUBLANG="en"
+# Mime-type for chapters - I think it has to be xhtml, but I'm not certain.
+EPUBMIME="application/xhtml+xml"
+
+# List of chapters. Modify the regex to suit your naming scheme; it currently
+# assumes you're using a naming scheme like [0-9]*.html. Order matters as it
+# will use this order to generate the table of contents. If you're doing 
+# something funky, you can just set this to a list of files seperated by '\n's
+EPUBSRCS=$(find ./ -regex ".*[0-9]*.html" -not -path "*build/*" | sort)
+
+# Command to generate tempfiles. If you don't have mktemp, you can use something
+# like 'date +%s | xargs printf "/tmp/tmp.%s\n"'
+maketemp() {
+	mktemp
+}
+
+# Command to generate a chapter title. As-is, it will use the positional order.
+# It is passed the basename, filename, and positional order.
+gentitle() {
+	echo "Chapter $3"
+}
+
+# Command to validate epub at the end of the run. It will be passed the path to 
+# the epub.
+validate() {
+	echo "No validator setup"
+#	java -jar /path/to/epubcheck.jar "$1"
+}
+EOF
+	errecho "No config.sh was found; a template has been created in the current directory"
+	# EX_CONFIG on my system
+	exit 78
+fi
+
+# Command to zip up and create an epub.
+zipepub() {
+	zip -rX "$1" mimetype META-INF/ OEBPS/
+}
+
+# First, create the build directory
+mkdir -pv build/{META-INF,OEBPS}
+
+# Next, enumerate the chapters
+manifest=$(maketemp)
+spine=$(maketemp)
+toc=$(maketemp)
+pos=1
+while read -r filename
+do
+	cp -v "$filename" build/OEBPS/
+	base=$(basename "$filename")
+	# Fucking bloat
+	echo "<item id=\"chapter${pos}\" href=\"${base}\" media-type=\"${EPUBMIME}\"/>" >> "$manifest"
+	echo "<itemref idref=\"chapter${pos}\" />" >> "$spine"
+	echo "<navPoint class=\"chapter\" id=\"chapter${pos}\" playOrder=\"${pos}\">" >> "$toc"
+	echo "<navLabel><text>$(gentitle "$base" "$filename" "$pos")</text></navLabel><content src=\"${base}\"/></navPoint>" >> "$toc"
+	pos=$((pos + 1))
+done <<< "$EPUBSRCS"
+
+# Now, generate all the metadata
+# mimetype - it'll break otherwise
+echo -n 'application/epub+zip' > build/mimetype
+# Container - same for every build atm
+cat > build/META-INF/container.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8" ?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+EOF
+# opf file - big pile of bloat
+(cat << EOF
+<?xml version="1.0"?>
+<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
+
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>$EPUBTITLE</dc:title>
+    <dc:language>$EPUBLANG</dc:language>
+    <dc:creator opf:file-as="$EPUBFILEAS" opf:role="aut">$EPUBAUTHOR</dc:creator>
+EOF
+if $EPUBUSEURL
+then
+	echo "<dc:identifier id=\"BookId\" opf:scheme=\"URL\">$EPUBURL</dc:identifier>"
+else
+	echo "<dc:identifier id=\"BookId\" opf:scheme=\"ISBN\">$EPUBISBN</dc:identifier>"
+fi
+echo "</metadata><manifest>"
+cat "$manifest"
+echo '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx">'
+cat "$spine"
+echo '</spine></package>'
+) > build/OEBPS/content.opf
+# ncx file - the table of contents
+if $EPUBUSEURL
+then
+	epubuid="$EPUBURL"
+else
+	epubuid="$EPUBISBN"
+fi
+(
+cat << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN"
+"http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+
+<ncx version="2005-1" xml:lang="$EPUBLANG" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+
+  <head>
+<!-- The following four metadata items are required for all NCX documents,
+including those that conform to the relaxed constraints of OPS 2.0 -->
+
+    <meta name="dtb:uid" content="$epubuid"/> <!-- same as in .opf -->
+    <meta name="dtb:depth" content="1"/> <!-- 1 or higher -->
+    <meta name="dtb:totalPageCount" content="0"/> <!-- must be 0 -->
+    <meta name="dtb:maxPageNumber" content="0"/> <!-- must be 0 -->
+  </head>
+
+  <docTitle>
+    <text>$EPUBTITLE</text>
+  </docTitle>
+
+  <docAuthor>
+    <text>$EPUBFILEAS</text>
+  </docAuthor>
+
+  <navMap>
+EOF
+cat "$toc"
+echo '</navMap></ncx>'
+) > build/OEBPS/toc.ncx
+
+# Finally, zip up and report success
+(cd build; zipepub ../"$EPUBTARGET")
+file "$EPUBTARGET"

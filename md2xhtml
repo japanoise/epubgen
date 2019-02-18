@@ -1,0 +1,44 @@
+#!/bin/bash
+# Renders a Markdown document as XHTML that should pass epubcheck's tests.
+
+# msg stderr
+errecho() {
+	echo "$@" >&2
+}
+
+# usage - unused yet since we don't have any command line args
+usage() {
+	errecho "usage - $0 <input.md> <output.html>"
+}
+
+if [ -z "$1" ] || [ -z "$2" ]
+then
+	usage
+	exit 1
+fi
+
+if [ -f "config.sh" ]
+then
+	source "config.sh"
+else
+	errecho "No config.sh found, run epubgen to generate a template"
+	exit 1
+fi
+
+# Override to change your markdown implementation and/or add options
+mkdn() {
+	markdown "$@"
+}
+
+(cat <<EOF
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN' 'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="$EPUBLANG">
+<head>
+<title>$EPUBTITLE</title>
+</head>
+<body>
+EOF
+mkdn "$1"
+echo '</body></html>') > "$2"
+
