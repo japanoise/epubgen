@@ -45,3 +45,9 @@ validate() {
 		java -jar "$HOME/builds/epubcheck-4.1.1/epubcheck.jar" "$1"
 	fi
 }
+
+# Command to generate html snippets from markdown. Override to change your
+# markdown implementation, add options, smartypants, etc.
+mkdn() {
+	markdown "$@"
+}

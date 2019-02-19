@@ -59,6 +59,12 @@ validate() {
 	echo "No validator setup"
 #	java -jar /path/to/epubcheck.jar "$1"
 }
+
+# Command to generate html snippets from markdown. Override to change your
+# markdown implementation, add options, smartypants, etc.
+mkdn() {
+	markdown "$@"
+}
 EOF
 	errecho "No config.sh was found; a template has been created in the current directory"
 	# EX_CONFIG on my system
