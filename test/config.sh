@@ -40,6 +40,8 @@ gentitle() {
 # Command to validate epub at the end of the run. It will be passed the path to 
 # the epub.
 validate() {
-	echo "No validator setup"
-#	java -jar /path/to/epubcheck.jar "$1"
+	if [ -f "$HOME/builds/epubcheck-4.1.1/epubcheck.jar" ]
+	then
+		java -jar "$HOME/builds/epubcheck-4.1.1/epubcheck.jar" "$1"
+	fi
 }

@@ -166,3 +166,4 @@ echo '</navMap></ncx>'
 # Finally, zip up and report success
 (cd build; zipepub ../"$EPUBTARGET")
 file "$EPUBTARGET"
+validate "$EPUBTARGET"
