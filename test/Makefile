@@ -1,6 +1,9 @@
+SOURCES := $(wildcard *.md)
+OBJECTS := $(patsubst %.md, %.html, $(SOURCES))
+
 all: test.epub
 
-test.epub: 0001.html 0002.html
+test.epub: $(OBJECTS)
 	../epubgen
 
 %.html: %.md
